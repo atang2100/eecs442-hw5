@@ -90,7 +90,7 @@ if __name__ == '__main__':
     pts3d = np.loadtxt("task1/pts3d.txt")
 
     M = find_projection(pts2d, pts3d)
-    print("M1 is", M)
+    print("M is\n", M)
 
 
     # Alternately, for some of the data, we provide pts1/pts1_3D, which you
