@@ -29,7 +29,7 @@ def find_fundamental_matrix(shape, pts1, pts2):
     #This will give you an answer you can compare with
     #Your answer should match closely once you've divided by the last entry
     FOpenCV, _ = cv2.findFundamentalMat(pts1, pts2, cv2.FM_8POINT)
-    print("correct answer is\n", FOpenCV)
+    # print("correct answer is\n", FOpenCV)
     ################################################################################################################################
     # make T
     s = np.maximum(pts1.max(), pts2.max())
@@ -61,7 +61,7 @@ def find_fundamental_matrix(shape, pts1, pts2):
     F = F / F[2, 2]
     F = F.T
     
-    print("my answer is\n", F)
+    # print("my answer is\n", F)
     return F
 
 
@@ -118,33 +118,37 @@ def find_triangulation(K1, K2, F, pts1, pts2):
     - pcd: Numpy array of shape (N,4) giving the homogeneous 3D point cloud
       data
     """
-    pcd = None
-    ###########################################################################
-    # TODO: Your code here                                                    #
-    ###########################################################################
-    # Compute essential matrix E from F and K1, K2
-    E = np.dot(K2.T, np.dot(F, K1))
-    # Decompose E into four possible camera matrices for M2
+    max_num_positive_points = 0
+    # cast everything to floats
+    K1 = K1.astype(np.float64)
+    K2 = K2.astype(np.float64)
+    F = np.float64(F)
+    pts1 = np.float64(pts1)
+    pts2 = np.float64(pts2)
+    
+    # make E
+    E = K2.T @ F @ K1
     R1, R2, t = cv2.decomposeEssentialMat(E)
-    K0 = np.eye(3)
-    M1 = np.hstack([K1, np.zeros((3,1))])
-    pcd = np.zeros((pts1.shape[0], 4))
-    max_inliers = 0
-    for R, T_sign in [(R1, 1), (R1, -1), (R2, 1), (R2, -1)]:
-        M2 = np.hstack([np.dot(K2, R), T_sign*t])
-        # Triangulate points using M1 and M2
-        homog_pts_3d = cv2.triangulatePoints(M1, M2, pts1.T, pts2.T)
-        # Convert to inhomogeneous coordinates
-        inhomog_pts_3d = homog_pts_3d / homog_pts_3d[3,:]
-        # Count number of inlier points (positive z)
-        num_inliers = np.sum(inhomog_pts_3d[2,:] > 0)
-        # Update max inliers and pcd if necessary
-        if num_inliers > max_inliers:
-            max_inliers = num_inliers
-            pcd = inhomog_pts_3d.T
-    ###########################################################################
-    #                             END OF YOUR CODE                            #
-    ###########################################################################
+
+    # M1 is 3 x 4, create all possible M2s
+    M1 = np.float64(np.hstack((K1, np.zeros((3, 1)))))
+    M2_1 = np.float64(np.hstack((np.dot(K2, R1), np.dot(K2, t))))
+    M2_2 = np.float64(np.hstack((np.dot(K2, R1), np.dot(K2, -t))))
+    M2_3 = np.float64(np.hstack((np.dot(K2, R2), np.dot(K2, t))))
+    M2_4 = np.float64(np.hstack((np.dot(K2, R2), np.dot(K2, -t))))
+    M2_options = [M2_1, M2_2, M2_3, M2_4]
+    
+    for M2 in M2_options:
+        # 4d points
+        homog_points = np.float64(cv2.triangulatePoints(M1, M2, pts1.T, pts2.T))
+        # check number of positives in last row
+        num_positive_points = np.sum(homog_points[3] > 0)
+        if num_positive_points > max_num_positive_points:
+            max_num_positive_points = num_positive_points
+            best_X = homog_points
+    # divide by last row
+    best_X /= best_X[3]
+    pcd = best_X
     return pcd
 
 
@@ -176,9 +180,9 @@ if __name__ == '__main__':
         F = find_fundamental_matrix(shape, pts1, pts2)
         # compute the epipoles
         e1, e2 = compute_epipoles(F)
-        print(e1, e2)
+        # print(e1, e2)
         #to get the real coordinates, divide by the last entry
-        print(e1[:2]/e1[-1], e2[:2]/e2[-1])
+        # print(e1[:2]/e1[-1], e2[:2]/e2[-1])
 
         outname = os.path.join(output, name + "_us.png")
         # If filename isn't provided or is None, this plt.shows().
@@ -186,8 +190,11 @@ if __name__ == '__main__':
         draw_epipolar(img1, img2, F, pts1[::10, :], pts2[::10, :],
                       epi1=e1, epi2=e2, filename=outname)
 
-        if 0:
+        if 1:
             #you can turn this on or off
+            if name == "reallyInwards":
+                E = K2.T @ F @ K1
+                print("E is\n", E)
             pcd = find_triangulation(K1, K2, F, pts1, pts2)
             visualize_pcd(pcd,
                           filename=os.path.join(output, name + "_rec.png"))
